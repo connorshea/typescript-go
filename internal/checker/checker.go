@@ -11707,12 +11707,23 @@ func (c *Checker) isUncalledFunctionReference(node *ast.Node, symbol *ast.Symbol
 
 func (c *Checker) checkPropertyNotUsedBeforeDeclaration(prop *ast.Symbol, node *ast.Node, right *ast.Node) {
 	valueDeclaration := prop.ValueDeclaration
-	if valueDeclaration == nil || ast.GetSourceFileOfNode(node).IsDeclarationFile {
+	if valueDeclaration == nil {
+		return
+	}
+	// Each diagnostic below requires one of these, and both are cheaper than walking the
+	// parent chain to the source file: the first quits at the enclosing function body,
+	// the second is a single kind test. Checking them first keeps the common case — a
+	// property access that reports nothing — off the unbounded walk.
+	inPropertyInitializerOrClassStaticBlock := c.isInPropertyInitializerOrClassStaticBlock(node, false /*ignoreArrowFunctions*/)
+	if !inPropertyInitializerOrClassStaticBlock && !ast.IsClassDeclaration(valueDeclaration) {
+		return
+	}
+	if ast.GetSourceFileOfNode(node).IsDeclarationFile {
 		return
 	}
 	var diagnostic *ast.Diagnostic
 	declarationName := right.Text()
-	if c.isInPropertyInitializerOrClassStaticBlock(node, false /*ignoreArrowFunctions*/) &&
+	if inPropertyInitializerOrClassStaticBlock &&
 		!c.isOptionalPropertyDeclaration(valueDeclaration) &&
 		!(ast.IsAccessExpression(node) && ast.IsAccessExpression(node.Expression())) &&
 		!c.isBlockScopedNameDeclaredBeforeUse(valueDeclaration, right) &&
