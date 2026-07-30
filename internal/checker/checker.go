@@ -8144,7 +8144,8 @@ func (c *Checker) checkElementAccessChain(node *ast.Node, checkMode CheckMode) *
 
 func (c *Checker) checkElementAccessExpression(node *ast.Node, exprType *Type, checkMode CheckMode) *Type {
 	objectType := exprType
-	if getAssignmentTargetKind(node) != AssignmentKindNone || c.isMethodAccessForCall(node) {
+	assignmentTargetKind := getAssignmentTargetKind(node)
+	if assignmentTargetKind != AssignmentKindNone || c.isMethodAccessForCall(node) {
 		objectType = c.getWidenedType(objectType)
 	}
 	indexExpression := node.AsElementAccessExpression().ArgumentExpression
@@ -8160,7 +8161,6 @@ func (c *Checker) checkElementAccessExpression(node *ast.Node, exprType *Type, c
 	if c.isForInVariableForNumericPropertyNames(indexExpression) {
 		effectiveIndexType = c.numberType
 	}
-	assignmentTargetKind := getAssignmentTargetKind(node)
 	var accessFlags AccessFlags
 	if assignmentTargetKind == AssignmentKindNone {
 		accessFlags = AccessFlagsExpressionPosition
@@ -8170,7 +8170,7 @@ func (c *Checker) checkElementAccessExpression(node *ast.Node, exprType *Type, c
 			core.IfElse(c.isGenericObjectType(objectType) && !isThisTypeParameter(objectType), AccessFlagsNoIndexSignatures, 0)
 	}
 	indexedAccessType := core.OrElse(c.getIndexedAccessTypeOrUndefined(objectType, effectiveIndexType, accessFlags, node, nil), c.errorType)
-	return c.checkIndexedAccessIndexType(c.getFlowTypeOfAccessExpression(node, c.getResolvedSymbolOrNil(node), indexedAccessType, indexExpression, checkMode), node)
+	return c.checkIndexedAccessIndexType(c.getFlowTypeOfAccessExpression(node, c.getResolvedSymbolOrNil(node), indexedAccessType, indexExpression, checkMode, assignmentTargetKind), node)
 }
 
 // Return true if given node is an expression consisting of an identifier (possibly parenthesized)
@@ -11354,7 +11354,7 @@ func (c *Checker) checkPropertyAccessExpressionOrQualifiedName(node *ast.Node, l
 			c.error(node, diagnostics.Index_signature_in_type_0_only_permits_reading, c.TypeToString(apparentType))
 		}
 		propType = indexInfo.valueType
-		if c.compilerOptions.NoUncheckedIndexedAccess == core.TSTrue && getAssignmentTargetKind(node) != AssignmentKindDefinite {
+		if c.compilerOptions.NoUncheckedIndexedAccess == core.TSTrue && assignmentKind != AssignmentKindDefinite {
 			propType = c.getUnionType([]*Type{propType, c.missingType})
 		}
 		if c.compilerOptions.NoPropertyAccessFromIndexSignature == core.TSTrue && ast.IsPropertyAccessExpression(node) {
@@ -11385,14 +11385,13 @@ func (c *Checker) checkPropertyAccessExpressionOrQualifiedName(node *ast.Node, l
 			propType = c.getTypeOfSymbol(prop)
 		}
 	}
-	return c.getFlowTypeOfAccessExpression(node, prop, propType, right, checkMode)
+	return c.getFlowTypeOfAccessExpression(node, prop, propType, right, checkMode, assignmentKind)
 }
 
-func (c *Checker) getFlowTypeOfAccessExpression(node *ast.Node, prop *ast.Symbol, propType *Type, errorNode *ast.Node, checkMode CheckMode) *Type {
+func (c *Checker) getFlowTypeOfAccessExpression(node *ast.Node, prop *ast.Symbol, propType *Type, errorNode *ast.Node, checkMode CheckMode, assignmentKind AssignmentKind) *Type {
 	// Only compute control flow type if this is a property access expression that isn't an
 	// assignment target, and the referenced property was declared as a variable, property,
 	// accessor, or optional method.
-	assignmentKind := getAssignmentTargetKind(node)
 	if assignmentKind == AssignmentKindDefinite {
 		return c.removeMissingType(propType, prop != nil && prop.Flags&ast.SymbolFlagsOptional != 0)
 	}
@@ -27029,9 +27028,11 @@ func (c *Checker) getPropertyTypeForIndexType(originalObjectType *Type, objectTy
 				}
 				c.addDeprecatedSuggestion(deprecatedNode, prop.Declarations, propName)
 			}
+			assignmentKind := AssignmentKindNone
 			if accessExpression != nil {
+				assignmentKind = getAssignmentTargetKind(accessExpression)
 				c.markPropertyAsReferenced(prop, accessExpression, c.isSelfTypeAccess(accessExpression.Expression(), objectType.symbol))
-				if c.isAssignmentToReadonlyEntity(accessExpression, prop, getAssignmentTargetKind(accessExpression)) {
+				if c.isAssignmentToReadonlyEntity(accessExpression, prop, assignmentKind) {
 					c.error(accessExpression.AsElementAccessExpression().ArgumentExpression, diagnostics.Cannot_assign_to_0_because_it_is_a_read_only_property, c.symbolToString(prop))
 					return nil
 				}
@@ -27049,7 +27050,7 @@ func (c *Checker) getPropertyTypeForIndexType(originalObjectType *Type, objectTy
 				propType = c.getTypeOfSymbol(prop)
 			}
 			switch {
-			case accessExpression != nil && getAssignmentTargetKind(accessExpression) != AssignmentKindDefinite:
+			case accessExpression != nil && assignmentKind != AssignmentKindDefinite:
 				return c.getFlowTypeOfReference(accessExpression, propType)
 			case accessNode != nil && ast.IsIndexedAccessTypeNode(accessNode) && c.containsMissingType(propType):
 				return c.getUnionType([]*Type{propType, c.undefinedType})
