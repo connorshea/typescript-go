@@ -4109,27 +4109,35 @@ func (r *Relater) propertiesRelatedTo(source *Type, target *Type, reportErrors b
 	}
 	result := TernaryTrue
 	if isTupleType(target) {
+		// Each TargetTupleType() is two interface dispatches, and the loop below repeats
+		// them per element, so resolve both tuple targets once up front. Neither `source`
+		// nor `target` is reassigned anywhere in this function.
+		targetTuple := target.TargetTupleType()
 		if r.c.isArrayOrTupleType(source) {
-			if !target.TargetTupleType().readonly && (r.c.isReadonlyArrayType(source) || isTupleType(source) && source.TargetTupleType().readonly) {
+			var sourceTuple *TupleType
+			if isTupleType(source) {
+				sourceTuple = source.TargetTupleType()
+			}
+			if !targetTuple.readonly && (r.c.isReadonlyArrayType(source) || sourceTuple != nil && sourceTuple.readonly) {
 				return TernaryFalse
 			}
 			sourceArity := r.c.getTypeReferenceArity(source)
 			targetArity := r.c.getTypeReferenceArity(target)
 			var sourceRest bool
-			if isTupleType(source) {
-				sourceRest = source.TargetTupleType().combinedFlags&ElementFlagsRest != 0
+			if sourceTuple != nil {
+				sourceRest = sourceTuple.combinedFlags&ElementFlagsRest != 0
 			} else {
 				sourceRest = true
 			}
-			targetHasRestElement := target.TargetTupleType().combinedFlags&ElementFlagsRest != 0
-			targetHasVariableElement := target.TargetTupleType().combinedFlags&ElementFlagsVariable != 0
+			targetHasRestElement := targetTuple.combinedFlags&ElementFlagsRest != 0
+			targetHasVariableElement := targetTuple.combinedFlags&ElementFlagsVariable != 0
 			var sourceMinLength int
-			if isTupleType(source) {
-				sourceMinLength = source.TargetTupleType().minLength
+			if sourceTuple != nil {
+				sourceMinLength = sourceTuple.minLength
 			} else {
 				sourceMinLength = 0
 			}
-			targetMinLength := target.TargetTupleType().minLength
+			targetMinLength := targetTuple.minLength
 			if !sourceRest && sourceArity < targetMinLength {
 				if reportErrors {
 					r.reportError(diagnostics.Source_has_0_element_s_but_target_requires_1, sourceArity, targetMinLength)
@@ -4154,13 +4162,13 @@ func (r *Relater) propertiesRelatedTo(source *Type, target *Type, reportErrors b
 			}
 			sourceTypeArguments := r.c.getTypeArguments(source)
 			targetTypeArguments := r.c.getTypeArguments(target)
-			targetStartCount := getStartElementCount(target.TargetTupleType(), ElementFlagsNonRest)
-			targetEndCount := getEndElementCount(target.TargetTupleType(), ElementFlagsNonRest)
+			targetStartCount := getStartElementCount(targetTuple, ElementFlagsNonRest)
+			targetEndCount := getEndElementCount(targetTuple, ElementFlagsNonRest)
 			canExcludeDiscriminants := excludedProperties.Len() != 0
 			for sourcePosition := range sourceArity {
 				var sourceFlags ElementFlags
-				if isTupleType(source) {
-					sourceFlags = source.TargetTupleType().elementInfos[sourcePosition].flags
+				if sourceTuple != nil {
+					sourceFlags = sourceTuple.elementInfos[sourcePosition].flags
 				} else {
 					sourceFlags = ElementFlagsRest
 				}
@@ -4179,7 +4187,7 @@ func (r *Relater) propertiesRelatedTo(source *Type, target *Type, reportErrors b
 				}
 				targetFlags := ElementFlagsNone
 				if targetPosition >= 0 {
-					targetFlags = target.TargetTupleType().elementInfos[targetPosition].flags
+					targetFlags = targetTuple.elementInfos[targetPosition].flags
 				}
 				if targetFlags&ElementFlagsVariadic != 0 && sourceFlags&ElementFlagsVariadic == 0 {
 					if reportErrors {
@@ -4231,7 +4239,7 @@ func (r *Relater) propertiesRelatedTo(source *Type, target *Type, reportErrors b
 			}
 			return result
 		}
-		if target.TargetTupleType().combinedFlags&ElementFlagsVariable != 0 {
+		if targetTuple.combinedFlags&ElementFlagsVariable != 0 {
 			return TernaryFalse
 		}
 	}
