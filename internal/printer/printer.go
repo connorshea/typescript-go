@@ -5259,15 +5259,28 @@ func (p *Printer) emitCommentsBeforeNode(node *ast.Node) *commentState {
 		return nil
 	}
 
-	emitFlags := p.emitContext.EmitFlags(node)
-	commentRange := p.emitContext.CommentRange(node)
+	// One `emitNodes` lookup for the emit flags, the comment range and the synthetic leading
+	// comments, instead of one per value. `emitNodes` is a pointer-keyed map that is large for
+	// a big file, so each lookup tends to be a cache miss, and `enterNode` runs per node.
+	// Kept scoped to this function: nothing called from here mutates `emitNodes`, and the
+	// entries are arena-allocated so the pointer stays valid across unrelated inserts.
+	emitFlags := EFNone
+	commentRange := node.Loc
+	var synthLeading []SynthesizedComment
+	if emitNode := p.emitContext.emitNodes.TryGet(node); emitNode != nil {
+		emitFlags = emitNode.emitFlags
+		if emitNode.flags&hasCommentRange != 0 {
+			commentRange = emitNode.commentRange
+		}
+		synthLeading = emitNode.leadingComments
+	}
 	containerPos := p.containerPos
 	containerEnd := p.containerEnd
 	declarationListContainerEnd := p.declarationListContainerEnd
 
 	// Emit leading comments
 	p.emitLeadingCommentsOfNode(node, emitFlags, commentRange)
-	p.emitLeadingSyntheticCommentsOfNode(node, emitFlags)
+	p.emitLeadingSyntheticComments(synthLeading, emitFlags)
 	if emitFlags&EFNoNestedComments != 0 {
 		p.commentsDisabled = true
 	}
@@ -5293,11 +5306,21 @@ func (p *Printer) emitCommentsAfterNode(node *ast.Node, state *commentState) {
 		p.commentsDisabled = false
 	}
 
-	p.emitTrailingSyntheticCommentsOfNode(node, emitFlags)
+	// As in emitCommentsBeforeNode, one lookup for both the synthetic trailing comments and the
+	// erased type annotation. Looked up fresh here rather than carried over in commentState,
+	// because emitting the node's children can have created the entry in between.
+	var synthTrailing []SynthesizedComment
+	var typeNode *ast.TypeNode
+	if emitNode := p.emitContext.emitNodes.TryGet(node); emitNode != nil {
+		synthTrailing = emitNode.trailingComments
+		typeNode = emitNode.typeNode
+	}
+
+	p.emitTrailingSyntheticComments(synthTrailing, emitFlags)
 	p.emitTrailingCommentsOfNode(node, emitFlags, commentRange, containerPos, containerEnd, declarationListContainerEnd)
 
 	// Preserve comments from erased type annotation
-	if typeNode := p.emitContext.GetTypeNode(node); typeNode != nil {
+	if typeNode != nil {
 		p.emitTrailingCommentsOfNode(node, emitFlags, typeNode.Loc, containerPos, containerEnd, declarationListContainerEnd)
 	}
 }
@@ -5436,11 +5459,10 @@ func (p *Printer) emitTrailingCommentsOfNode(node *ast.Node, emitFlags EmitFlags
 	}
 }
 
-func (p *Printer) emitLeadingSyntheticCommentsOfNode(node *ast.Node, emitFlags EmitFlags) {
+func (p *Printer) emitLeadingSyntheticComments(synth []SynthesizedComment, emitFlags EmitFlags) {
 	if emitFlags&EFNoLeadingComments != 0 {
 		return
 	}
-	synth := p.emitContext.GetSyntheticLeadingComments(node)
 	for _, c := range synth {
 		p.emitLeadingSynthesizedComment(c)
 	}
@@ -5458,11 +5480,10 @@ func (p *Printer) emitLeadingSynthesizedComment(comment SynthesizedComment) {
 	}
 }
 
-func (p *Printer) emitTrailingSyntheticCommentsOfNode(node *ast.Node, emitFlags EmitFlags) {
+func (p *Printer) emitTrailingSyntheticComments(synth []SynthesizedComment, emitFlags EmitFlags) {
 	if emitFlags&EFNoTrailingComments != 0 {
 		return
 	}
-	synth := p.emitContext.GetSyntheticTrailingComments(node)
 	for _, c := range synth {
 		p.emitTrailingSynthesizedComment(c)
 	}
@@ -5874,8 +5895,15 @@ func (p *Printer) emitSourceMapsBeforeNode(node *ast.Node) *sourceMapState {
 		return nil
 	}
 
-	emitFlags := p.emitContext.EmitFlags(node)
-	loc := p.emitContext.SourceMapRange(node)
+	// One lookup for both values, as in emitCommentsBeforeNode.
+	emitFlags := EFNone
+	loc := node.Loc
+	if emitNode := p.emitContext.emitNodes.TryGet(node); emitNode != nil {
+		emitFlags = emitNode.emitFlags
+		if emitNode.flags&hasSourceMapRange != 0 {
+			loc = emitNode.sourceMapRange
+		}
+	}
 
 	if !ast.IsNotEmittedStatement(node) &&
 		emitFlags&EFNoLeadingSourceMap == 0 &&
