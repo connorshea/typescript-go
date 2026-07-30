@@ -971,13 +971,14 @@ func (c *EmitContext) SetSyntheticLeadingComments(node *ast.Node, comments []Syn
 }
 
 func (c *EmitContext) AddSyntheticLeadingComment(node *ast.Node, kind ast.Kind, text string, hasTrailingNewLine bool) *ast.Node {
-	c.emitNodes.Get(node).leadingComments = append(c.emitNodes.Get(node).leadingComments, SynthesizedComment{Kind: kind, Loc: core.NewTextRange(-1, -1), HasTrailingNewLine: hasTrailingNewLine, Text: text})
+	emitNode := c.emitNodes.Get(node)
+	emitNode.leadingComments = append(emitNode.leadingComments, SynthesizedComment{Kind: kind, Loc: core.NewTextRange(-1, -1), HasTrailingNewLine: hasTrailingNewLine, Text: text})
 	return node
 }
 
 func (c *EmitContext) GetSyntheticLeadingComments(node *ast.Node) []SynthesizedComment {
-	if c.emitNodes.Has(node) {
-		return c.emitNodes.Get(node).leadingComments
+	if emitNode := c.emitNodes.TryGet(node); emitNode != nil {
+		return emitNode.leadingComments
 	}
 	return nil
 }
@@ -988,13 +989,14 @@ func (c *EmitContext) SetSyntheticTrailingComments(node *ast.Node, comments []Sy
 }
 
 func (c *EmitContext) AddSyntheticTrailingComment(node *ast.Node, kind ast.Kind, text string, hasTrailingNewLine bool) *ast.Node {
-	c.emitNodes.Get(node).trailingComments = append(c.emitNodes.Get(node).trailingComments, SynthesizedComment{Kind: kind, Loc: core.NewTextRange(-1, -1), HasTrailingNewLine: hasTrailingNewLine, Text: text})
+	emitNode := c.emitNodes.Get(node)
+	emitNode.trailingComments = append(emitNode.trailingComments, SynthesizedComment{Kind: kind, Loc: core.NewTextRange(-1, -1), HasTrailingNewLine: hasTrailingNewLine, Text: text})
 	return node
 }
 
 func (c *EmitContext) GetSyntheticTrailingComments(node *ast.Node) []SynthesizedComment {
-	if c.emitNodes.Has(node) {
-		return c.emitNodes.Get(node).trailingComments
+	if emitNode := c.emitNodes.TryGet(node); emitNode != nil {
+		return emitNode.trailingComments
 	}
 	return nil
 }
