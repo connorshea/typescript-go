@@ -62,10 +62,13 @@ func (m *OrderedMap[K, V]) Set(key K, value V) {
 		m.mp = make(map[K]V)
 	}
 
-	if _, ok := m.mp[key]; !ok {
+	// Assign first and detect a new key from the length, which needs one hash and
+	// probe rather than the two a separate comma-ok lookup plus assign would do.
+	n := len(m.mp)
+	m.mp[key] = value
+	if len(m.mp) != n {
 		m.keys = append(m.keys, key)
 	}
-	m.mp[key] = value
 }
 
 // Get retrieves a value from the map.
