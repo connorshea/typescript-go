@@ -2794,9 +2794,9 @@ func (r *Relater) hasExcessProperties(source *Type, target *Type, reportErrors b
 }
 
 func (c *Checker) getTypeOfPropertyInTypes(types []*Type, name string) *Type {
-	var propTypes []*Type
-	for _, t := range types {
-		propTypes = append(propTypes, c.getTypeOfPropertyInType(t, name))
+	propTypes := make([]*Type, len(types))
+	for i, t := range types {
+		propTypes[i] = c.getTypeOfPropertyInType(t, name)
 	}
 	return c.getUnionType(propTypes)
 }
