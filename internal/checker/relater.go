@@ -4580,6 +4580,10 @@ func (r *Relater) indexSignaturesRelatedTo(source *Type, target *Type, sourceIsP
 		return r.indexSignaturesIdenticalTo(source, target)
 	}
 	indexInfos := r.c.getIndexInfosOfType(target)
+	if len(indexInfos) == 0 {
+		// Nothing to check, and no need to build the closure below.
+		return TernaryTrue
+	}
 	targetHasStringIndex := core.Some(indexInfos, func(info *IndexInfo) bool { return info.keyType == r.c.stringType })
 	result := TernaryTrue
 	for _, targetInfo := range indexInfos {
