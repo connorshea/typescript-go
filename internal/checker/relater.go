@@ -2976,6 +2976,7 @@ func (r *Relater) getUndefinedStrippedTargetIfNeeded(source *Type, target *Type)
 
 func (r *Relater) typeRelatedToSomeType(source *Type, target *Type, reportErrors bool, intersectionState IntersectionState) Ternary {
 	targetTypes := target.Types()
+	var match *Type
 	if target.flags&TypeFlagsUnion != 0 {
 		if containsType(targetTypes, source) {
 			return TernaryTrue
@@ -3009,7 +3010,7 @@ func (r *Relater) typeRelatedToSomeType(source *Type, target *Type, reportErrors
 			}
 			return TernaryFalse
 		}
-		match := r.c.getMatchingUnionConstituentForType(target, source)
+		match = r.c.getMatchingUnionConstituentForType(target, source)
 		if match != nil {
 			related := r.isRelatedToEx(source, match, RecursionFlagsTarget, false /*reportErrors*/, nil /*headMessage*/, intersectionState)
 			if related != TernaryFalse {
@@ -3018,6 +3019,10 @@ func (r *Relater) typeRelatedToSomeType(source *Type, target *Type, reportErrors
 		}
 	}
 	for _, t := range targetTypes {
+		if t == match {
+			// Already tried above, and it was not related.
+			continue
+		}
 		related := r.isRelatedToEx(source, t, RecursionFlagsTarget, false /*reportErrors*/, nil /*headMessage*/, intersectionState)
 		if related != TernaryFalse {
 			return related
