@@ -116,6 +116,8 @@ type Printer struct {
 	Options                           PrinterOptions
 	emitContext                       *EmitContext
 	currentSourceFile                 *ast.SourceFile
+	originalSourceFileKey             *ast.SourceFile
+	originalSourceFile                *ast.SourceFile
 	uniqueHelperNames                 map[string]*ast.IdentifierNode
 	externalHelpersModuleName         *ast.IdentifierNode
 	nextListElementPos                int
@@ -224,6 +226,21 @@ func (p *Printer) getLiteralTextOfNode(node *ast.LiteralLikeNode, sourceFile *as
 }
 
 // `node` must be one of Identifier | PrivateIdentifier | LiteralExpression | JsxNamespacedName
+// currentSourceFileOriginal is `MostOriginal(p.currentSourceFile)`, which walks the `original`
+// chain. That is a per-file value, but getTextOfNode consulted it per identifier printed, so
+// cache it. Keyed on currentSourceFile so it self-invalidates: the four places that assign
+// currentSourceFile (including the save/restore pairs in emitSourceFile and Write) need no
+// matching update, and a stale entry is impossible.
+//
+// The caller must have established that p.currentSourceFile is non-nil.
+func (p *Printer) currentSourceFileOriginal() *ast.SourceFile {
+	if p.originalSourceFileKey != p.currentSourceFile {
+		p.originalSourceFileKey = p.currentSourceFile
+		p.originalSourceFile = p.emitContext.MostOriginal(p.currentSourceFile.AsNode()).AsSourceFile()
+	}
+	return p.originalSourceFile
+}
+
 func (p *Printer) getTextOfNode(node *ast.Node, includeTrivia bool) string {
 	if ast.IsMemberName(node) && p.emitContext.autoGenerate[node] != nil {
 		return p.nameGenerator.GenerateName(node)
@@ -241,7 +258,7 @@ func (p *Printer) getTextOfNode(node *ast.Node, includeTrivia bool) string {
 	case ast.KindIdentifier,
 		ast.KindPrivateIdentifier,
 		ast.KindJsxNamespacedName:
-		if !canUseSourceFile || ast.GetSourceFileOfNode(node) != p.emitContext.MostOriginal(p.currentSourceFile.AsNode()).AsSourceFile() {
+		if !canUseSourceFile || ast.GetSourceFileOfNode(node) != p.currentSourceFileOriginal() {
 			return node.Text()
 		}
 	case ast.KindStringLiteral,
