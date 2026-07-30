@@ -19009,10 +19009,17 @@ func (c *Checker) getApplicableIndexInfo(t *Type, keyType *Type) *IndexInfo {
 }
 
 func (c *Checker) getApplicableIndexInfoForName(t *Type, name string) *IndexInfo {
-	if isLateBoundName(name) {
-		return c.getApplicableIndexInfo(t, c.esSymbolType)
+	// Most types have no index signatures, and findApplicableIndexInfo returns nil for an
+	// empty list without ever inspecting the key type. Check that first so we don't intern
+	// a string literal type for `name` only to throw it away.
+	indexInfos := c.getIndexInfosOfType(t)
+	if len(indexInfos) == 0 {
+		return nil
 	}
-	return c.getApplicableIndexInfo(t, c.getStringLiteralType(name))
+	if isLateBoundName(name) {
+		return c.findApplicableIndexInfo(indexInfos, c.esSymbolType)
+	}
+	return c.findApplicableIndexInfo(indexInfos, c.getStringLiteralType(name))
 }
 
 func (c *Checker) findApplicableIndexInfo(indexInfos []*IndexInfo, keyType *Type) *IndexInfo {
