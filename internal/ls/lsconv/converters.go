@@ -37,10 +37,21 @@ func NewConverters(positionEncoding lsproto.PositionEncodingKind, getLineMap fun
 	}
 }
 
+// LineMapFor resolves the line map for a script. In production this goes through the
+// snapshot's filesystem, which normalizes and canonicalizes the file name (allocating a
+// string on case-insensitive hosts) before a map lookup, so callers converting many
+// positions within one script should resolve it once and pass it to
+// PositionToLineAndCharacterWithLineMap.
+func (c *Converters) LineMapFor(script Script) *LSPLineMap {
+	return c.getLineMap(script.FileName())
+}
+
 func (c *Converters) ToLSPRange(script Script, textRange core.TextRange) lsproto.Range {
+	text := script.Text()
+	lineMap := c.LineMapFor(script)
 	return lsproto.Range{
-		Start: c.PositionToLineAndCharacter(script, core.TextPos(textRange.Pos())),
-		End:   c.PositionToLineAndCharacter(script, core.TextPos(textRange.End())),
+		Start: c.positionToLineAndCharacter(text, lineMap, core.TextPos(textRange.Pos())),
+		End:   c.positionToLineAndCharacter(text, lineMap, core.TextPos(textRange.End())),
 	}
 }
 
@@ -192,11 +203,19 @@ func (c *Converters) LineAndCharacterToPosition(script Script, lineAndCharacter 
 }
 
 func (c *Converters) PositionToLineAndCharacter(script Script, position core.TextPos) lsproto.Position {
+	return c.positionToLineAndCharacter(script.Text(), c.LineMapFor(script), position)
+}
+
+// PositionToLineAndCharacterWithLineMap is PositionToLineAndCharacter for callers that
+// already hold the script's line map from LineMapFor.
+func (c *Converters) PositionToLineAndCharacterWithLineMap(script Script, lineMap *LSPLineMap, position core.TextPos) lsproto.Position {
+	return c.positionToLineAndCharacter(script.Text(), lineMap, position)
+}
+
+func (c *Converters) positionToLineAndCharacter(text string, lineMap *LSPLineMap, position core.TextPos) lsproto.Position {
 	// UTF-8 offset to UTF-8/16 0-indexed line and character
 
-	position = max(0, min(position, core.TextPos(len(script.Text()))))
-
-	lineMap := c.getLineMap(script.FileName())
+	position = max(0, min(position, core.TextPos(len(text))))
 
 	line, isLineStart := slices.BinarySearch(lineMap.LineStarts, position)
 	if !isLineStart {
@@ -213,7 +232,7 @@ func (c *Converters) PositionToLineAndCharacter(script Script, position core.Tex
 		character = position - start
 	} else {
 		// We need to rescan the text as UTF-16 to find the character offset.
-		for _, r := range script.Text()[start:position] {
+		for _, r := range text[start:position] {
 			character += core.TextPos(utf16.RuneLen(r))
 		}
 	}

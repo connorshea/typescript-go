@@ -505,6 +505,8 @@ func encodeSemanticTokens(ctx context.Context, tokens []semanticToken, file *ast
 	encoded := make([]uint32, 0, len(tokens)*5)
 	prevLine := uint32(0)
 	prevChar := uint32(0)
+	// Resolved once instead of twice per token; it is immutable for the snapshot.
+	lineMap := converters.LineMapFor(file)
 
 	for _, token := range tokens {
 		// Skip tokens with types not supported by the client
@@ -528,8 +530,8 @@ func encodeSemanticTokens(ctx context.Context, tokens []semanticToken, file *ast
 		tokenEnd := token.node.End()
 
 		// Convert both start and end positions to LSP coordinates, then compute length
-		startPos := converters.PositionToLineAndCharacter(file, core.TextPos(tokenStart))
-		endPos := converters.PositionToLineAndCharacter(file, core.TextPos(tokenEnd))
+		startPos := converters.PositionToLineAndCharacterWithLineMap(file, lineMap, core.TextPos(tokenStart))
+		endPos := converters.PositionToLineAndCharacterWithLineMap(file, lineMap, core.TextPos(tokenEnd))
 
 		// Length is the character difference when on the same line
 		var tokenLength uint32
