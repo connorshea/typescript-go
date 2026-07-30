@@ -2939,8 +2939,14 @@ func (r *Relater) eachTypeRelatedToType(source *Type, target *Type, reportErrors
 	if strippedTarget.flags&TypeFlagsUnion != 0 {
 		strippedTypes = strippedTarget.Types()
 	}
+	// This is loop invariant, so compute it once rather than per source constituent. The
+	// union check must stay first: `strippedTypes` is only non-empty when it holds, which
+	// is what keeps the modulo below from dividing by zero.
+	useCorrespondence := strippedTarget.flags&TypeFlagsUnion != 0 &&
+		len(sourceTypes) >= len(strippedTypes) &&
+		len(sourceTypes)%len(strippedTypes) == 0
 	for i, sourceType := range sourceTypes {
-		if strippedTarget.flags&TypeFlagsUnion != 0 && len(sourceTypes) >= len(strippedTypes) && len(sourceTypes)%len(strippedTypes) == 0 {
+		if useCorrespondence {
 			// many unions are mappings of one another; in such cases, simply comparing members at the same index can shortcut the comparison
 			// such unions will have identical lengths, and their corresponding elements will match up. Another common scenario is where a large
 			// union has a union of objects intersected with it. In such cases, if the input was, eg `("a" | "b" | "c") & (string | boolean | {} | {whatever})`,
