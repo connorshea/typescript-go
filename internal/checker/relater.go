@@ -4482,8 +4482,12 @@ func (r *Relater) signaturesRelatedTo(source *Type, target *Type, kind Signature
 		// method). Simply do a pairwise comparison of the signatures in the two signature lists instead
 		// of the much more expensive N * M comparison matrix we explore below. We erase type parameters
 		// as they are known to always be the same.
+		if len(targetSignatures) == 0 {
+			break
+		}
+		comparer := r.signatureComparer(intersectionState)
 		for i := range targetSignatures {
-			related := r.signatureRelatedTo(sourceSignatures[i], targetSignatures[i], true /*erase*/, reportErrors, intersectionState)
+			related := r.signatureRelatedTo(sourceSignatures[i], targetSignatures[i], true /*erase*/, reportErrors, comparer)
 			if related == TernaryFalse {
 				return TernaryFalse
 			}
@@ -4496,15 +4500,19 @@ func (r *Relater) signaturesRelatedTo(source *Type, target *Type, kind Signature
 		// this regardless of the number of signatures, but the potential costs are prohibitive due
 		// to the quadratic nature of the logic below.
 		eraseGenerics := r.relation == r.c.comparableRelation
-		result = r.signatureRelatedTo(sourceSignatures[0], targetSignatures[0], eraseGenerics, reportErrors, intersectionState)
+		result = r.signatureRelatedTo(sourceSignatures[0], targetSignatures[0], eraseGenerics, reportErrors, r.signatureComparer(intersectionState))
 	default:
+		if len(targetSignatures) == 0 {
+			break
+		}
+		comparer := r.signatureComparer(intersectionState)
 	outer:
 		for _, t := range targetSignatures {
 			saveErrorState := r.getErrorState()
 			// Only elaborate errors from the first failure
 			shouldElaborateErrors := reportErrors
 			for _, s := range sourceSignatures {
-				related := r.signatureRelatedTo(s, t, true /*erase*/, shouldElaborateErrors, intersectionState)
+				related := r.signatureRelatedTo(s, t, true /*erase*/, shouldElaborateErrors, comparer)
 				if related != TernaryFalse {
 					result &= related
 					r.restoreErrorState(saveErrorState)
@@ -4545,8 +4553,19 @@ func (r *Relater) constructorVisibilitiesAreCompatible(sourceSignature *Signatur
 	return false
 }
 
+// signatureComparer returns the type comparer used when relating signatures. Callers build
+// it once per signature list comparison rather than once per signature pair: it is passed to
+// compareSignaturesRelated, which can hand it to instantiateSignatureInContextOf, which stores
+// it in a heap-allocated InferenceContext. Escape analysis is not path sensitive, so every
+// instance is heap-allocated even on the vast majority of calls that never get that far.
+func (r *Relater) signatureComparer(intersectionState IntersectionState) TypeComparer {
+	return func(source *Type, target *Type, reportErrors bool) Ternary {
+		return r.isRelatedToEx(source, target, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
+	}
+}
+
 // See signatureAssignableTo, compareSignaturesIdentical
-func (r *Relater) signatureRelatedTo(source *Signature, target *Signature, erase bool, reportErrors bool, intersectionState IntersectionState) Ternary {
+func (r *Relater) signatureRelatedTo(source *Signature, target *Signature, erase bool, reportErrors bool, comparer TypeComparer) Ternary {
 	checkMode := SignatureCheckModeNone
 	switch {
 	case r.relation == r.c.subtypeRelation:
@@ -4558,10 +4577,7 @@ func (r *Relater) signatureRelatedTo(source *Signature, target *Signature, erase
 		source = r.c.getErasedSignature(source)
 		target = r.c.getErasedSignature(target)
 	}
-	isRelatedToWorker := func(source *Type, target *Type, reportErrors bool) Ternary {
-		return r.isRelatedToEx(source, target, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
-	}
-	return r.c.compareSignaturesRelated(source, target, checkMode, reportErrors, r.reportError, isRelatedToWorker, r.c.reportUnreliableMapper)
+	return r.c.compareSignaturesRelated(source, target, checkMode, reportErrors, r.reportError, comparer, r.c.reportUnreliableMapper)
 }
 
 func (r *Relater) signaturesIdenticalTo(source *Type, target *Type, kind SignatureKind) Ternary {
