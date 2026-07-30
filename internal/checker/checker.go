@@ -16503,18 +16503,22 @@ func (c *Checker) GetTypeOfSymbolAtLocation(symbol *ast.Symbol, location *ast.No
 	return c.getNonMissingTypeOfSymbol(symbol)
 }
 
+// The CheckFlags getTypeOfSymbol dispatches on. Ordinary variables, properties and
+// signatures have none of them, so one masked test replaces four.
+const checkFlagsWithSpecialTypes = ast.CheckFlagsDeferredType | ast.CheckFlagsInstantiated | ast.CheckFlagsMapped | ast.CheckFlagsReverseMapped
+
 func (c *Checker) getTypeOfSymbol(symbol *ast.Symbol) *Type {
-	if symbol.CheckFlags&ast.CheckFlagsDeferredType != 0 {
-		return c.getTypeOfSymbolWithDeferredType(symbol)
-	}
-	if symbol.CheckFlags&ast.CheckFlagsInstantiated != 0 {
-		return c.getTypeOfInstantiatedSymbol(symbol)
-	}
-	if symbol.CheckFlags&ast.CheckFlagsMapped != 0 {
-		return c.getTypeOfMappedSymbol(symbol)
-	}
-	if symbol.CheckFlags&ast.CheckFlagsReverseMapped != 0 {
-		return c.getTypeOfReverseMappedSymbol(symbol)
+	if symbol.CheckFlags&checkFlagsWithSpecialTypes != 0 {
+		switch {
+		case symbol.CheckFlags&ast.CheckFlagsDeferredType != 0:
+			return c.getTypeOfSymbolWithDeferredType(symbol)
+		case symbol.CheckFlags&ast.CheckFlagsInstantiated != 0:
+			return c.getTypeOfInstantiatedSymbol(symbol)
+		case symbol.CheckFlags&ast.CheckFlagsMapped != 0:
+			return c.getTypeOfMappedSymbol(symbol)
+		default:
+			return c.getTypeOfReverseMappedSymbol(symbol)
+		}
 	}
 	if symbol.Flags&ast.SymbolFlagsAccessor != 0 {
 		return c.getTypeOfAccessors(symbol)
