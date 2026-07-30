@@ -3940,8 +3940,13 @@ func (p *Parser) tryParseModifier(hasSeenStaticModifier bool, permitConstAsModif
 }
 
 func (p *Parser) parseContextualModifier(t ast.Kind) bool {
+	// Check the cheap precondition before saving the parser state; if the token
+	// doesn't match, the mark/rewind would be a no-op.
+	if p.token != t {
+		return false
+	}
 	state := p.mark()
-	if p.token == t && p.nextTokenCanFollowModifier() {
+	if p.nextTokenCanFollowModifier() {
 		return true
 	}
 	p.rewind(state)
@@ -3949,8 +3954,13 @@ func (p *Parser) parseContextualModifier(t ast.Kind) bool {
 }
 
 func (p *Parser) parseAnyContextualModifier() bool {
+	// Check the cheap precondition before saving the parser state; if the token
+	// isn't a modifier, the mark/rewind would be a no-op.
+	if !ast.IsModifierKind(p.token) {
+		return false
+	}
 	state := p.mark()
-	if ast.IsModifierKind(p.token) && p.nextTokenCanFollowModifier() {
+	if p.nextTokenCanFollowModifier() {
 		return true
 	}
 	p.rewind(state)
