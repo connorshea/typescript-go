@@ -62,13 +62,17 @@ func encodeJsxCharacterEntity(b *strings.Builder, charCode rune) {
 	b.WriteByte(';')
 }
 
+const upperhex = "0123456789ABCDEF"
+
+// charCode is always <= 0xFFFF: escapeStringWorker splits anything larger into a surrogate
+// pair first, and both halves plus the lone-surrogate and default cases are bounded by 0xFFFF.
+// So the escape is always exactly four digits, and the zero-padding loop is unnecessary.
 func encodeUtf16EscapeSequence(b *strings.Builder, charCode rune) {
-	hexCharCode := strings.ToUpper(strconv.FormatUint(uint64(charCode), 16))
 	b.WriteString(`\u`)
-	for i := len(hexCharCode); i < 4; i++ {
-		b.WriteByte('0')
-	}
-	b.WriteString(hexCharCode)
+	b.WriteByte(upperhex[charCode>>12&0xF])
+	b.WriteByte(upperhex[charCode>>8&0xF])
+	b.WriteByte(upperhex[charCode>>4&0xF])
+	b.WriteByte(upperhex[charCode&0xF])
 }
 
 // Based heavily on the abstract 'Quote'/'QuoteJSONString' operation from ECMA-262 (24.3.2.2),
