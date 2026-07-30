@@ -548,7 +548,23 @@ func (tx *DeclarationTransformer) getTypeReferences() (result []*ast.FileReferen
 	return result
 }
 
-func (tx *DeclarationTransformer) setupDiagnosticContext(input *ast.Node) (bool, func()) {
+// diagnosticContext holds the state setupDiagnosticContext replaced, for restoreDiagnosticContext
+// to put back. It is a value rather than a closure because setupDiagnosticContext runs at every
+// node of the tree in visitCJSExportAssignments and visitNestedExpression, and a returned closure
+// capturing these three locals is necessarily heap-allocated.
+type diagnosticContext struct {
+	diagnostic                    GetSymbolAccessibilityDiagnostic
+	errorNameNode                 *ast.Node
+	suppressNewDiagnosticContexts bool
+}
+
+func (tx *DeclarationTransformer) restoreDiagnosticContext(saved diagnosticContext) {
+	tx.state.getSymbolAccessibilityDiagnostic = saved.diagnostic
+	tx.state.errorNameNode = saved.errorNameNode
+	tx.suppressNewDiagnosticContexts = saved.suppressNewDiagnosticContexts
+}
+
+func (tx *DeclarationTransformer) setupDiagnosticContext(input *ast.Node) (bool, diagnosticContext) {
 	canProdiceDiagnostic := canProduceDiagnostics(input)
 	oldWithinObjectLiteralType := tx.suppressNewDiagnosticContexts
 	shouldEnterSuppressNewDiagnosticsContextContext := (input.Kind == ast.KindTypeLiteral || input.Kind == ast.KindMappedType) && !(input.Parent.Kind == ast.KindTypeAliasDeclaration || input.Parent.Kind == ast.KindJSTypeAliasDeclaration)
@@ -563,10 +579,10 @@ func (tx *DeclarationTransformer) setupDiagnosticContext(input *ast.Node) (bool,
 		tx.suppressNewDiagnosticContexts = true
 	}
 
-	return canProdiceDiagnostic, func() {
-		tx.state.getSymbolAccessibilityDiagnostic = oldDiag
-		tx.state.errorNameNode = oldName
-		tx.suppressNewDiagnosticContexts = oldWithinObjectLiteralType
+	return canProdiceDiagnostic, diagnosticContext{
+		diagnostic:                    oldDiag,
+		errorNameNode:                 oldName,
+		suppressNewDiagnosticContexts: oldWithinObjectLiteralType,
 	}
 }
 
@@ -616,8 +632,8 @@ func (tx *DeclarationTransformer) visitDeclarationSubtree(input *ast.Node) *ast.
 		tx.enclosingDeclaration = input
 	}
 
-	canProdiceDiagnostic, cleanupDiagnosticContext := tx.setupDiagnosticContext(input)
-	defer cleanupDiagnosticContext()
+	canProdiceDiagnostic, savedDiagnosticContext := tx.setupDiagnosticContext(input)
+	defer tx.restoreDiagnosticContext(savedDiagnosticContext)
 
 	var result *ast.Node
 
@@ -2671,8 +2687,8 @@ func (tx *DeclarationTransformer) stripDeclareModifiers(node *ast.Node) *ast.Nod
 
 func (tx *DeclarationTransformer) visitCJSExportAssignments(expression *ast.Node) *ast.Node {
 	if expression != nil {
-		_, cleanupDiagnosticContext := tx.setupDiagnosticContext(expression)
-		defer cleanupDiagnosticContext()
+		_, savedDiagnosticContext := tx.setupDiagnosticContext(expression)
+		defer tx.restoreDiagnosticContext(savedDiagnosticContext)
 		switch ast.GetAssignmentDeclarationKind(expression) {
 		case ast.JSDeclarationKindModuleExports:
 			if tx.state.currentSourceFile.CommonJSModuleIndicator != nil {
@@ -2691,8 +2707,8 @@ func (tx *DeclarationTransformer) visitCJSExportAssignments(expression *ast.Node
 
 func (tx *DeclarationTransformer) visitNestedExpression(expression *ast.Node) *ast.Node {
 	if expression != nil {
-		_, cleanupDiagnosticContext := tx.setupDiagnosticContext(expression)
-		defer cleanupDiagnosticContext()
+		_, savedDiagnosticContext := tx.setupDiagnosticContext(expression)
+		defer tx.restoreDiagnosticContext(savedDiagnosticContext)
 		switch ast.GetAssignmentDeclarationKind(expression) {
 		case ast.JSDeclarationKindProperty:
 			tx.transformExpandoAssignment(expression.AsBinaryExpression())
@@ -2788,8 +2804,8 @@ func (tx *DeclarationTransformer) transformExpandoAssignment(node *ast.BinaryExp
 		localName = tx.Factory().NewGeneratedNameForNode(node.AsNode())
 	}
 
-	_, cleanupDiagnosticContext := tx.setupDiagnosticContext(node.AsNode())
-	defer cleanupDiagnosticContext()
+	_, savedDiagnosticContext := tx.setupDiagnosticContext(node.AsNode())
+	defer tx.restoreDiagnosticContext(savedDiagnosticContext)
 
 	if ast.IsIdentifier(node.Right) {
 		// alias-like, emit an `export {name}` or `export {name as alias}`
@@ -2878,8 +2894,8 @@ func (tx *DeclarationTransformer) transformExpandoHost(name *ast.Node, declarati
 		modifierFlags ^= ast.ModifierFlagsExport
 	}
 
-	_, cleanupDiagnosticContext := tx.setupDiagnosticContext(declaration)
-	defer cleanupDiagnosticContext()
+	_, savedDiagnosticContext := tx.setupDiagnosticContext(declaration)
+	defer tx.restoreDiagnosticContext(savedDiagnosticContext)
 
 	modifiers := tx.Factory().NewModifierList(ast.CreateModifiersFromModifierFlags(modifierFlags, tx.Factory().NewModifier))
 	replacement := make([]*ast.Node, 0)
