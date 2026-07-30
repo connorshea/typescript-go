@@ -94,6 +94,14 @@ func (f *NodeFactory) TextCount() int {
 	return f.textCount
 }
 
+// ResetCounts clears the per-file node/text counters while leaving the node
+// arenas intact, so a pooled factory can be reused without discarding
+// partially-filled arena blocks.
+func (f *NodeFactory) ResetCounts() {
+	f.nodeCount = 0
+	f.textCount = 0
+}
+
 func (f *NodeFactory) AsNodeFactory() *NodeFactory {
 	return f
 }

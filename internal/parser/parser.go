@@ -128,7 +128,11 @@ func getParser() *Parser {
 }
 
 func putParser(p *Parser) {
-	*p = Parser{scanner: p.scanner, setParentFromContext: p.setParentFromContext}
+	// Preserve the node factory so its arenas' partially-filled blocks are
+	// reused by the next file parsed with this pooled parser, rather than
+	// abandoned. Only the per-file counters need clearing.
+	*p = Parser{scanner: p.scanner, setParentFromContext: p.setParentFromContext, factory: p.factory}
+	p.factory.ResetCounts()
 	parserPool.Put(p)
 }
 
