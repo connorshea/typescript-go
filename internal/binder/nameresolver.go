@@ -94,7 +94,12 @@ loop:
 				result = nil
 			}
 		}
-		withinDeferredContext = withinDeferredContext || getIsDeferredContext(location, lastLocation)
+		// Only OnSuccessfullyResolvedSymbol reads this, and that is reached only when
+		// nameNotFoundMessage is non-nil; otherwise getIsDeferredContext runs per scope
+		// level for a value nobody looks at.
+		if nameNotFoundMessage != nil {
+			withinDeferredContext = withinDeferredContext || getIsDeferredContext(location, lastLocation)
+		}
 		switch location.Kind {
 		case ast.KindSourceFile:
 			if !ast.IsExternalOrCommonJSModule(location.AsSourceFile()) {
