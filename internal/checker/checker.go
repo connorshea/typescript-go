@@ -14062,12 +14062,16 @@ func (c *Checker) addDeprecatedSuggestionWorker(declarations []*ast.Node, diagno
 }
 
 func (c *Checker) isDeprecatedSymbol(symbol *ast.Symbol) bool {
-	parentSymbol := c.getParentOfSymbol(symbol)
-	if parentSymbol != nil && len(symbol.Declarations) > 1 {
-		if parentSymbol.Flags&ast.SymbolFlagsInterface != 0 {
-			return core.Some(symbol.Declarations, c.IsDeprecatedDeclaration)
-		} else {
-			return core.Every(symbol.Declarations, c.IsDeprecatedDeclaration)
+	// The parent is only consulted for multiply-declared symbols, and getParentOfSymbol
+	// costs a merged-symbol map lookup (and can force late binding), so test the cheap
+	// declaration count first.
+	if len(symbol.Declarations) > 1 {
+		if parentSymbol := c.getParentOfSymbol(symbol); parentSymbol != nil {
+			if parentSymbol.Flags&ast.SymbolFlagsInterface != 0 {
+				return core.Some(symbol.Declarations, c.IsDeprecatedDeclaration)
+			} else {
+				return core.Every(symbol.Declarations, c.IsDeprecatedDeclaration)
+			}
 		}
 	}
 	return symbol.ValueDeclaration != nil && c.IsDeprecatedDeclaration(symbol.ValueDeclaration) || len(symbol.Declarations) != 0 && core.Every(symbol.Declarations, c.IsDeprecatedDeclaration)
