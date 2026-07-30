@@ -378,12 +378,11 @@ func FindPrecedingTokenEx(sourceFile *ast.SourceFile, position int, startNode *a
 					foundChild = nodes[index]
 				}
 
+				// `prevChild` is the last non-reparsed node at or before `validLookupIndex`,
+				// so stop as soon as it is found (or if it was already set by `visitNode`).
 				validLookupIndex := core.IfElse(match, index-1, len(nodes)-1)
-				for i := validLookupIndex; i >= 0; i-- {
-					if nodes[i].Flags&ast.NodeFlagsReparsed != 0 {
-						continue
-					}
-					if prevChild == nil {
+				for i := validLookupIndex; prevChild == nil && i >= 0; i-- {
+					if nodes[i].Flags&ast.NodeFlagsReparsed == 0 {
 						prevChild = nodes[i]
 					}
 				}
