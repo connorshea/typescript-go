@@ -55,11 +55,14 @@ func (s *Set[T]) Clear() {
 
 // Returns true if the key was not already present in the set.
 func (s *Set[T]) AddIfAbsent(key T) bool {
-	if s.Has(key) {
-		return false
+	if s.M == nil {
+		s.M = make(map[T]struct{})
 	}
-	s.Add(key)
-	return true
+	// Insert unconditionally and detect newness from the length, which needs one
+	// hash and probe rather than the two a separate Has/Add pair would do.
+	n := len(s.M)
+	s.M[key] = struct{}{}
+	return len(s.M) != n
 }
 
 func (s *Set[T]) Clone() *Set[T] {
